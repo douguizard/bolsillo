@@ -315,3 +315,182 @@
   font-family: var(--font-num);
   font-variant-numeric: tabular-nums;
 }
+
+/* ============================================================
+   HOY · estado funcional (semáforo con datos reales)
+   ============================================================ */
+.hoy-body { display: flex; flex-direction: column; }
+
+/* skeleton mientras carga (opacity/transform only) */
+.hoy-skeleton {
+  height: 320px;
+  border-radius: var(--r-lg);
+  background: var(--glass-1);
+  border: 1px solid var(--line-1);
+  animation: hoyPulse 1.4s var(--ease-in-out) infinite;
+}
+@keyframes hoyPulse { 0%, 100% { opacity: 0.5; } 50% { opacity: 0.85; } }
+@media (prefers-reduced-motion: reduce) { .hoy-skeleton { animation: none; } }
+
+.hoy-error {
+  text-align: center;
+  color: var(--text-2);
+  font-size: var(--fs-sm);
+  padding: var(--sp-8) var(--sp-4);
+}
+
+/* aro lleno (no punteado) + color por estado */
+.gauge__arc--fill {
+  opacity: 1;
+  stroke-dasharray: none;
+  transition: stroke-dashoffset var(--dur-slow) var(--ease);
+}
+@media (prefers-reduced-motion: reduce) { .gauge__arc--fill { transition: none; } }
+.gauge--verde .gauge__arc--fill { stroke: var(--semaforo-verde); }
+.gauge--ambar .gauge__arc--fill { stroke: var(--semaforo-ambar); }
+.gauge--rojo  .gauge__arc--fill { stroke: var(--semaforo-rojo); }
+
+/* marca de avance (dónde deberías ir según el día) */
+.gauge__tick {
+  fill: var(--text-1);
+  stroke: var(--bg-2);
+  stroke-width: 2;
+}
+.gauge__value--pct { color: var(--text-1); }
+
+/* pill de estado + proyección bajo el anillo */
+.gauge-state { margin-top: calc(var(--sp-1) * -1); }
+.gauge-proj {
+  font-size: var(--fs-sm);
+  color: var(--text-2);
+  text-align: center;
+  line-height: 1.4;
+}
+.gauge-proj strong { color: var(--text-1); font-weight: var(--fw-semibold); }
+.gauge-proj--ambar strong { color: var(--semaforo-ambar); }
+.gauge-proj--rojo strong { color: var(--semaforo-rojo); }
+
+/* sub-línea en las mini-stats */
+.stat__sub { font-size: var(--fs-xs); color: var(--text-3); margin-top: 2px; }
+.stat__value--neg { color: var(--semaforo-rojo); }
+
+/* bloque de fijos comprometidos */
+.fijos-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  margin-top: var(--sp-3);
+  padding: var(--sp-4) var(--sp-5);
+}
+.fijos-card__label {
+  display: block;
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-semibold);
+  color: var(--text-1);
+}
+.fijos-card__hint { display: block; font-size: var(--fs-xs); color: var(--text-3); margin-top: 1px; }
+.fijos-card__val {
+  font-family: var(--font-num);
+  font-variant-numeric: tabular-nums;
+  font-weight: var(--fw-semibold);
+  font-size: var(--fs-h3);
+  color: var(--text-1);
+}
+
+/* "En qué se va" — top categorías con barra proporcional */
+.cat-break { margin-top: var(--sp-2); }
+.catbar-list { display: flex; flex-direction: column; gap: var(--sp-4); }
+.catbar {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: var(--sp-3);
+}
+.catbar__ic {
+  width: 36px; height: 36px;
+  flex: 0 0 auto;
+  display: grid; place-items: center;
+  border-radius: var(--r-sm);
+  color: var(--tint);
+  background: color-mix(in srgb, var(--tint) 16%, transparent);
+}
+.catbar__ic svg { width: 19px; height: 19px; }
+.catbar__body { min-width: 0; }
+.catbar__label {
+  display: block;
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
+  color: var(--text-1);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.catbar__track {
+  display: block;
+  height: 6px;
+  margin-top: var(--sp-2);
+  border-radius: var(--r-full);
+  background: var(--glass-2);
+  overflow: hidden;
+}
+.catbar__fill {
+  display: block;
+  height: 100%;
+  width: 0;
+  border-radius: inherit;
+  background: var(--tint);
+  transition: width var(--dur-slow) var(--ease);
+}
+@media (prefers-reduced-motion: reduce) { .catbar__fill { transition: none; } }
+.catbar__amt {
+  font-family: var(--font-num);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-semibold);
+  color: var(--text-2);
+}
+
+/* total hormiga del mes (aviso suave) */
+.hormiga-note {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  margin-top: var(--sp-5);
+  padding: var(--sp-3) var(--sp-4);
+  border-radius: var(--r-md);
+  background: var(--semaforo-ambar-bg);
+  border: 1px solid var(--semaforo-ambar-line);
+}
+.hormiga-note__ic { color: var(--semaforo-ambar); display: grid; place-items: center; }
+.hormiga-note__ic svg { width: 22px; height: 22px; }
+.hormiga-note__txt { font-size: var(--fs-sm); color: var(--text-1); font-weight: var(--fw-medium); }
+.hormiga-note__val {
+  margin-left: auto;
+  font-family: var(--font-num);
+  font-variant-numeric: tabular-nums;
+  font-weight: var(--fw-bold);
+  color: var(--semaforo-ambar);
+}
+
+/* ============================================================
+   Sheet de sueldo (bottom-sheet mínimo)
+   ============================================================ */
+.sueldo-head {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-3);
+  margin-bottom: var(--sp-2);
+}
+.sueldo-head__ic {
+  width: 40px; height: 40px;
+  flex: 0 0 auto;
+  display: grid; place-items: center;
+  border-radius: var(--r-sm);
+  color: var(--accent);
+  background: var(--accent-soft);
+  border: 1px solid var(--line-accent);
+}
+.sueldo-head__ic svg { width: 22px; height: 22px; }
+.sueldo-hint { font-size: var(--fs-xs); color: var(--text-3); margin-top: var(--sp-1); line-height: 1.4; }
+.sueldo-form .field:first-of-type { margin-top: var(--sp-3); }
+.sueldo-adv { margin-top: var(--sp-1); }
+.sueldo-adv[hidden] { display: none; }

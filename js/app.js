@@ -10,6 +10,7 @@ import creditos from './views/creditos.js';
 import asesor from './views/asesor.js';
 import ajustes from './views/ajustes.js';
 import registrar from './views/registrar.js';
+import { abrirSueldo } from './views/sueldo-sheet.js';
 import { openDB, getConfig, saveConfig, getAll, bulkPut } from './db.js';
 import { materializarMes } from './recurring.js';
 
@@ -121,12 +122,12 @@ function initTabbar() {
   });
 }
 
-/* ---- header: acceso a Ajustes ---- */
+/* ---- header: engrane abre el sueldo (lo mínimo de Ajustes en T4) ---- */
 function initHeader() {
   const settingsBtn = document.getElementById('open-ajustes');
   if (settingsBtn) {
     settingsBtn.addEventListener('click', () => {
-      location.hash = '#/ajustes';
+      abrirSueldo({ onSaved: () => refreshActive('hoy') });
     });
   }
 }

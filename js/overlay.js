@@ -47,6 +47,17 @@ function montar(contenidoHTML, onBind) {
 }
 
 /**
+ * Hoja inferior genérica (bottom-sheet) con contenido a medida.
+ * Reusa el mismo scrim/panel/Escape que confirmar y menu.
+ * @param {string} contenidoHTML
+ * @param {(panel:HTMLElement, cerrar:(v?:any)=>void)=>void} onBind
+ * @returns {Promise<any>} el valor con que se cerró
+ */
+export function hoja(contenidoHTML, onBind) {
+  return montar(contenidoHTML, onBind);
+}
+
+/**
  * Diálogo de confirmación. Resuelve true/false.
  * @param {{title:string, text?:string, okText?:string, cancelText?:string, danger?:boolean}} o
  */
