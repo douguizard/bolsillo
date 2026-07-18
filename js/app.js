@@ -151,7 +151,7 @@ function initSheet() {
     delete document.body.dataset.sheet;
   };
 
-  registrar.mount(sheet, { open, close, onSaved: () => refreshActive('movimientos') });
+  registrar.mount(sheet, { open, close, onSaved: () => refreshActive(currentRoute) });
 
   fab.addEventListener('click', () => registrar.abrir());
   scrim.addEventListener('click', () => registrar.cerrar());
