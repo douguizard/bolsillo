@@ -519,6 +519,28 @@
 }
 .cfg-list:empty { display: none; }
 
+/* grupo por entidad: los varios productos de un mismo banco, juntos */
+.cfg-group { margin-top: var(--sp-5); }
+.cfg-group__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  padding: 0 var(--sp-1);
+}
+.cfg-group__title {
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-semibold);
+  color: var(--text-1);
+  letter-spacing: -0.01em;
+}
+.cfg-group__meta {
+  flex: 0 0 auto;
+  font-size: var(--fs-xs);
+  color: var(--text-3);
+}
+.cfg-group .cfg-list { margin-top: var(--sp-2); }
+
 .cfg-row {
   display: flex;
   align-items: center;

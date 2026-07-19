@@ -41,6 +41,22 @@ function aEntero(v, def = 0) {
 function montoEntero(v) {
   return Number.isInteger(v) ? v : aEntero(v, NaN);
 }
+/* --- opcionales: "" / null / undefined => null ("dato pendiente").
+   Si viene algo pero es basura => NaN, para que el validador lo diga. --- */
+function montoOpcional(v) {
+  if (v == null || v === '') return null;
+  return montoEntero(v);
+}
+function numeroOpcional(v) {
+  if (v == null || v === '') return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : NaN;
+}
+function diaOpcional(v) {
+  if (v == null || v === '') return null;
+  const n = Number.isInteger(v) ? v : parseInt(v, 10);
+  return Number.isInteger(n) ? n : NaN;
+}
 // Envuelve una base con id + timestamps y la congela.
 function conMetadatos(base, { now = new Date(), id } = {}) {
   const ts = nowISO(now);
@@ -163,19 +179,33 @@ function normalizarDesglose(d = {}) {
   };
 }
 
+/**
+ * Un crédito es UN PRODUCTO de una entidad, no "un banco": el mismo
+ * banco puede tener varios (libre inversión, tarjeta, vehículo…).
+ *
+ * Obligatorios: entidad + producto + cuotaMensual (lo que el usuario sí
+ * sabe de memoria). `saldo`, `tasaEA` y `diaPago` son OPCIONALES y
+ * quedan en null como "dato pendiente" hasta que la AI lea el extracto.
+ */
 export function crearCredito(datos = {}, { now = new Date() } = {}) {
-  const tasaEA = Number(datos.tasaEA ?? 0);
-  const tasaMV = datos.tasaMV != null && Number.isFinite(Number(datos.tasaMV))
-    ? Number(datos.tasaMV)
-    : tasaEAaMV(tasaEA);
+  // Retrocompat: antes el producto se guardaba en `tipo`.
+  const producto = esTextoNoVacio(datos.producto)
+    ? datos.producto.trim()
+    : (esTextoNoVacio(datos.tipo) ? datos.tipo.trim() : '');
+  const tasaEA = numeroOpcional(datos.tasaEA);
+  const tasaMVDada = numeroOpcional(datos.tasaMV);
+  const tasaMV = tasaMVDada != null && Number.isFinite(tasaMVDada)
+    ? tasaMVDada
+    : (tasaEA != null && Number.isFinite(tasaEA) ? tasaEAaMV(tasaEA) : null);
   const base = {
     entidad: typeof datos.entidad === 'string' ? datos.entidad.trim() : '',
-    tipo: typeof datos.tipo === 'string' ? datos.tipo : '',
-    saldo: montoEntero(datos.saldo),
+    producto,
+    tipo: typeof datos.tipo === 'string' ? datos.tipo : '', // se conserva por compatibilidad
+    saldo: montoOpcional(datos.saldo),
     cuotaMensual: Number.isInteger(datos.cuotaMensual) ? datos.cuotaMensual : aEntero(datos.cuotaMensual, 0),
     tasaEA,
     tasaMV,
-    diaPago: datos.diaPago,
+    diaPago: diaOpcional(datos.diaPago),
     desgloses: Array.isArray(datos.desgloses) ? datos.desgloses.map(normalizarDesglose) : [],
   };
   const v = validarCredito(base);
@@ -187,10 +217,18 @@ export function validarCredito(obj = {}) {
   const errores = [];
   if (!obj || typeof obj !== 'object') return { ok: false, errores: ['El crédito no es un objeto.'] };
   if (!esTextoNoVacio(obj.entidad)) errores.push('La entidad es obligatoria.');
-  if (!Number.isInteger(obj.saldo) || obj.saldo < 0) errores.push('El saldo debe ser un entero de pesos ≥ 0.');
+  if (!esTextoNoVacio(obj.producto)) errores.push('El producto es obligatorio.');
   if (!Number.isInteger(obj.cuotaMensual) || obj.cuotaMensual < 0) errores.push('La cuota mensual debe ser un entero ≥ 0.');
-  if (!Number.isFinite(obj.tasaEA) || obj.tasaEA < 0) errores.push('La tasa EA debe ser un número ≥ 0.');
-  if (!esDiaDelMes(obj.diaPago)) errores.push('El día de pago debe estar entre 1 y 31.');
+  // Opcionales: null = "lo completa la AI con el extracto". Basura sí se rechaza.
+  if (obj.saldo != null && (!Number.isInteger(obj.saldo) || obj.saldo < 0)) {
+    errores.push('El saldo debe ser un entero de pesos ≥ 0, o quedar vacío.');
+  }
+  if (obj.tasaEA != null && (!Number.isFinite(obj.tasaEA) || obj.tasaEA < 0)) {
+    errores.push('La tasa EA debe ser un número ≥ 0, o quedar vacía.');
+  }
+  if (obj.diaPago != null && !esDiaDelMes(obj.diaPago)) {
+    errores.push('El día de pago debe estar entre 1 y 31, o quedar vacío.');
+  }
   if (!Array.isArray(obj.desgloses)) errores.push('desgloses debe ser un arreglo.');
   return errores.length ? { ok: false, errores } : { ok: true, value: obj };
 }

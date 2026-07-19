@@ -6,6 +6,7 @@ import {
   crearCredito,
   crearIngreso,
   validarMovimiento,
+  validarCredito,
   actualizar,
   derivarEsHormiga,
   configDefault,
@@ -122,6 +123,95 @@ test('crearIngreso: rechaza fuente inválida (fail-fast)', () => {
 test('tasaEAaMV: 24% EA equivale a ~1,81% MV', () => {
   const mv = tasaEAaMV(24);
   assert.ok(Math.abs(mv - 1.8088) < 0.01);
+});
+
+/* ---------------- crédito: producto + datos pendientes ---------------- */
+
+const creditoMinimo = { entidad: 'AV Villas', producto: 'Libre inversión', cuotaMensual: 850000 };
+
+test('crearCredito: guarda con saldo, tasa y día VACÍOS (los completa la AI)', () => {
+  // El caso exacto que le falló a Doug: registró el crédito y no se agregó nada.
+  const c = crearCredito(creditoMinimo);
+  assert.equal(c.entidad, 'AV Villas');
+  assert.equal(c.producto, 'Libre inversión');
+  assert.equal(c.cuotaMensual, 850000);
+  assert.equal(c.saldo, null);
+  assert.equal(c.tasaEA, null);
+  assert.equal(c.tasaMV, null);
+  assert.equal(c.diaPago, null);
+  assert.ok(Object.isFrozen(c));
+});
+
+test('crearCredito: los opcionales también aceptan cadena vacía como "pendiente"', () => {
+  const c = crearCredito({ ...creditoMinimo, saldo: '', tasaEA: '', diaPago: '' });
+  assert.equal(c.saldo, null);
+  assert.equal(c.tasaEA, null);
+  assert.equal(c.diaPago, null);
+});
+
+test('crearCredito: exige producto (fail-fast, no guarda a medias)', () => {
+  assert.throws(
+    () => crearCredito({ entidad: 'AV Villas', cuotaMensual: 850000 }),
+    /producto es obligatorio/i,
+  );
+});
+
+test('crearCredito: exige entidad', () => {
+  assert.throws(
+    () => crearCredito({ producto: 'Tarjeta Visa', cuotaMensual: 320000 }),
+    /entidad es obligatoria/i,
+  );
+});
+
+test('crearCredito: varios productos de la MISMA entidad conviven', () => {
+  const libre = crearCredito({ entidad: 'AV Villas', producto: 'Libre inversión', cuotaMensual: 850000 });
+  const visa = crearCredito({ entidad: 'AV Villas', producto: 'Tarjeta Visa', cuotaMensual: 320000 });
+  assert.notEqual(libre.id, visa.id);
+  assert.equal(libre.entidad, visa.entidad);
+  assert.notEqual(libre.producto, visa.producto);
+
+  const delBanco = [libre, visa].filter((c) => c.entidad === 'AV Villas');
+  assert.equal(delBanco.length, 2);
+  assert.equal(delBanco.reduce((s, c) => s + c.cuotaMensual, 0), 1170000);
+});
+
+test('crearCredito: retrocompat, un crédito viejo sin producto usa su `tipo`', () => {
+  const viejo = crearCredito({ entidad: 'Bancolombia', tipo: 'Vehículo', saldo: 5000000, cuotaMensual: 300000, tasaEA: 24, diaPago: 15 });
+  assert.equal(viejo.producto, 'Vehículo');
+  assert.ok(viejo.tasaMV > 0); // la MV se sigue derivando de la EA
+});
+
+test('validarCredito: acepta un crédito viejo ya guardado (sin romperlo)', () => {
+  const yaGuardado = {
+    entidad: 'Bancolombia', producto: 'Tarjeta de crédito', tipo: 'Tarjeta de crédito',
+    saldo: 5000000, cuotaMensual: 300000, tasaEA: 24, tasaMV: 1.81, diaPago: 15, desgloses: [],
+  };
+  assert.equal(validarCredito(yaGuardado).ok, true);
+});
+
+test('validarCredito: rechaza cuota no entera (nada de floats en pesos)', () => {
+  const r = validarCredito({ ...creditoMinimo, cuotaMensual: 850000.5, desgloses: [] });
+  assert.equal(r.ok, false);
+  assert.ok(r.errores.some((e) => /cuota/i.test(e)));
+});
+
+test('validarCredito: un opcional escrito pero ilegible sí se rechaza', () => {
+  const base = { ...creditoMinimo, desgloses: [], saldo: null, tasaEA: null, diaPago: null };
+  assert.equal(validarCredito({ ...base, saldo: NaN }).ok, false);
+  assert.equal(validarCredito({ ...base, tasaEA: NaN }).ok, false);
+  assert.equal(validarCredito({ ...base, diaPago: 42 }).ok, false);
+  assert.equal(validarCredito({ ...base, saldo: -1 }).ok, false);
+  // …pero null (vacío) pasa sin problema:
+  assert.equal(validarCredito(base).ok, true);
+});
+
+test('actualizar: completar después la tasa deriva la MV y no toca el original', () => {
+  const c = crearCredito(creditoMinimo);
+  const conTasa = actualizar(c, { tasaEA: 26.5, tasaMV: tasaEAaMV(26.5) });
+  assert.equal(c.tasaEA, null); // original intacto
+  assert.equal(conTasa.tasaEA, 26.5);
+  assert.ok(conTasa.tasaMV > 0);
+  assert.equal(validarCredito(conTasa).ok, true);
 });
 
 test('configDefault: singleton con id fijo y apiKey null', () => {
