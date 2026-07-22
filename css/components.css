@@ -574,6 +574,9 @@
 
 /* ---- selector de cuenta ---- */
 .acct-row { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
+/* Fila de chips de sugerencia que sigue a un texto de ayuda (no a un label):
+   necesita aire propio para no quedar pegada al hint de arriba. */
+.acct-row--sug { margin-top: var(--sp-3); }
 .acct-chip {
   min-height: 40px;
   padding: 0 var(--sp-4);
@@ -594,7 +597,7 @@
 .acct-new .field__input { flex: 1 1 auto; }
 
 /* ---- campos de formulario ---- */
-.field { margin-top: var(--sp-4); }
+.field { margin-top: var(--sp-5); }
 .field__input {
   width: 100%;
   min-height: 46px;

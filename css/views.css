@@ -548,7 +548,7 @@
   border: 1px solid var(--line-accent);
 }
 .sueldo-head__ic svg { width: 22px; height: 22px; }
-.sueldo-hint { font-size: var(--fs-xs); color: var(--text-3); margin-top: var(--sp-1); line-height: 1.4; }
+.sueldo-hint { display: block; font-size: var(--fs-xs); color: var(--text-3); margin-top: var(--sp-2); line-height: 1.4; }
 .sueldo-form .field:first-of-type { margin-top: var(--sp-3); }
 .sueldo-adv { margin-top: var(--sp-1); }
 .sueldo-adv[hidden] { display: none; }

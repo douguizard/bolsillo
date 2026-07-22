@@ -174,7 +174,7 @@ export async function abrirCreditos({ onSaved } = {}) {
             ${huecoError('cre-producto')}
             <span class="sueldo-hint">El nombre con el que TÚ lo reconoces. Si tienes varios en el mismo banco, esto los diferencia.</span>
           </label>
-          <div class="acct-row">${sugerencias}</div>
+          <div class="acct-row acct-row--sug">${sugerencias}</div>
 
           <label class="field">
             <span class="field__label">Cuota de este mes</span>
