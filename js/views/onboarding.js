@@ -57,6 +57,7 @@ export async function abrirOnboarding({ onDone, forzado = false } = {}) {
     fijos: recurrentes.slice(),
     agregandoCuenta: false,
     agregandoFijo: false,
+    fijoEsVar: false, // segmented del alta de fijo: false=exacto, true=valor variable
   };
 
   /* ---- montaje ---- */
@@ -194,22 +195,34 @@ export async function abrirOnboarding({ onDone, forzado = false } = {}) {
 
   function pasoFijos() {
     const lista = st.fijos.length
-      ? `<div class="ob__chips">${st.fijos.map((f) => `
-          <span class="ob__chip ob__chip--dato">${esc(f.nombre)} · <span class="num">${esc(formatCOP(f.monto))}</span></span>`).join('')}</div>`
+      ? `<div class="ob__chips">${st.fijos.map((f) => {
+        const val = f.esVariable
+          ? (Number.isInteger(f.montoEstimado) ? '≈ ' + formatCOP(f.montoEstimado) : 'variable')
+          : formatCOP(f.monto);
+        return `<span class="ob__chip ob__chip--dato">${esc(f.nombre)} · <span class="num">${esc(val)}</span></span>`;
+      }).join('')}</div>`
       : '';
 
     const cats = catalogoVisible().map((c) => `<option value="${esc(c.id)}"${c.id === 'vivienda' ? ' selected' : ''}>${esc(c.label)}</option>`).join('');
+    const esVar = st.fijoEsVar;
 
     const form = st.agregandoFijo
       ? `<div class="ob__form">
            <label class="field">
              <span class="field__label">Nombre</span>
-             <input class="field__input" id="ob-fijo-nombre" type="text" placeholder="Arriendo" autocomplete="off" />
+             <input class="field__input" id="ob-fijo-nombre" type="text" placeholder="${esVar ? 'Luz' : 'Arriendo'}" autocomplete="off" />
            </label>
+           <div class="field">
+             <span class="field__label">¿Su valor es siempre igual o cambia?</span>
+             <div class="seg" role="tablist" id="ob-fijo-seg" aria-label="Tipo de valor del gasto fijo">
+               <button type="button" class="seg__opt${esVar ? '' : ' is-on'}" role="tab" aria-selected="${!esVar}" data-var="0">Fijo exacto</button>
+               <button type="button" class="seg__opt${esVar ? ' is-on' : ''}" role="tab" aria-selected="${esVar}" data-var="1">Valor variable</button>
+             </div>
+           </div>
            <div class="field field--split">
              <label class="field__col">
-               <span class="field__label">Monto</span>
-               <input class="field__input" id="ob-fijo-monto" type="text" data-monto inputmode="numeric" placeholder="1.800.000" autocomplete="off" />
+               <span class="field__label" id="ob-fijo-monto-label">${esVar ? '¿Cuánto suele ser? (opcional)' : 'Monto'}</span>
+               <input class="field__input" id="ob-fijo-monto" type="text" data-monto inputmode="numeric" placeholder="${esVar ? 'Opcional' : '1.800.000'}" autocomplete="off" />
              </label>
              <label class="field__col">
                <span class="field__label">Día</span>
@@ -226,9 +239,9 @@ export async function abrirOnboarding({ onDone, forzado = false } = {}) {
 
     return {
       html: `
-        <h1 class="ob__title">¿Qué pagas <em>igual</em> cada mes?</h1>
-        <p class="ob__text">Solo lo fijo y de monto exacto: arriendo, colegio, seguros, suscripciones. Bolsillo lo descuenta antes de calcular lo que te queda para el día a día.</p>
-        <p class="ob__text ob__text--sm">Lo que varía (gasolina, servicios, mercado) no va aquí: eso lo registras en el momento con su categoría. Este paso es opcional, puedes saltarlo.</p>
+        <h1 class="ob__title">¿Qué pagas <em>sí o sí</em> cada mes?</h1>
+        <p class="ob__text">Tu checklist de gastos fijos: arriendo, colegio, seguros, suscripciones… y también los que cambian de valor (luz, agua, gasolina, celular). Bolsillo los tiene en cuenta al calcular lo que te queda.</p>
+        <p class="ob__text ob__text--sm">Si el monto es siempre igual, ponlo. Si cambia cada mes, márcalo como <strong>valor variable</strong> y Bolsillo te preguntará el valor real cada mes. Este paso es opcional, puedes saltarlo.</p>
         ${lista}
         ${form}
         <div class="ob__actions">
@@ -238,28 +251,52 @@ export async function abrirOnboarding({ onDone, forzado = false } = {}) {
         </div>`,
       bind(cont) {
         const nuevo = cont.querySelector('[data-act="nuevo-fijo"]');
-        if (nuevo) nuevo.addEventListener('click', () => { st.agregandoFijo = true; pintar(); });
+        if (nuevo) nuevo.addEventListener('click', () => { st.agregandoFijo = true; st.fijoEsVar = false; pintar(); });
+
+        // segmented Fijo exacto / Valor variable (muta el DOM sin re-pintar para no
+        // perder lo tecleado en nombre/día).
+        const seg = cont.querySelector('#ob-fijo-seg');
+        if (seg) seg.querySelectorAll('.seg__opt').forEach((opt) => {
+          opt.addEventListener('click', () => {
+            const quiereVar = opt.dataset.var === '1';
+            if (quiereVar === st.fijoEsVar) return;
+            st.fijoEsVar = quiereVar;
+            seg.querySelectorAll('.seg__opt').forEach((o) => {
+              const on = o === opt;
+              o.classList.toggle('is-on', on);
+              o.setAttribute('aria-selected', String(on));
+            });
+            cont.querySelector('#ob-fijo-monto-label').textContent = quiereVar ? '¿Cuánto suele ser? (opcional)' : 'Monto';
+            cont.querySelector('#ob-fijo-monto').placeholder = quiereVar ? 'Opcional' : '1.800.000';
+          });
+        });
 
         const add = cont.querySelector('[data-act="add-fijo"]');
         if (add) add.addEventListener('click', async () => {
           const nombre = (cont.querySelector('#ob-fijo-nombre').value || '').trim();
-          const monto = parseCOP(cont.querySelector('#ob-fijo-monto').value);
+          const montoCampo = parseCOP(cont.querySelector('#ob-fijo-monto').value);
           const dia = parseInt(cont.querySelector('#ob-fijo-dia').value, 10);
+          const esVariable = st.fijoEsVar;
           if (!nombre) { toast('Escribe un nombre'); return; }
-          if (!Number.isInteger(monto) || monto <= 0) { toast('Escribe un monto válido'); return; }
+          // Exacto: monto obligatorio. Variable: opcional (solo referencia).
+          if (!esVariable && (!Number.isInteger(montoCampo) || montoCampo <= 0)) { toast('Escribe un monto válido'); return; }
           if (!Number.isInteger(dia) || dia < 1 || dia > 31) { toast('El día debe estar entre 1 y 31'); return; }
           const cuenta = st.cuentas[0];
           if (!cuenta) { toast('Necesitas al menos una cuenta'); return; }
 
           try {
             const rec = crearRecurrente({
-              nombre, monto, diaDelMes: dia,
+              nombre, diaDelMes: dia,
+              esVariable,
+              monto: esVariable ? null : montoCampo,
+              montoEstimado: esVariable ? montoCampo : null,
               categoria: cont.querySelector('#ob-fijo-cat').value,
               cuenta, modo: 'confirmar', activo: true,
             });
             await put('recurrentes', rec);
             st.fijos = [...st.fijos, rec];
             st.agregandoFijo = false;
+            st.fijoEsVar = false;
             toast('Gasto fijo agregado');
             pintar();
           } catch (err) {
@@ -275,7 +312,7 @@ export async function abrirOnboarding({ onDone, forzado = false } = {}) {
 
   function pasoListo() {
     const sueldo = st.empleo ? formatCOP(st.empleo.monto) : '—';
-    const fijos = st.fijos.filter((f) => f.activo).reduce((s, f) => s + f.monto, 0);
+    const fijos = st.fijos.filter((f) => f.activo).reduce((s, f) => s + (f.monto || 0), 0);
     return {
       html: `
         <span class="ob__ic ob__ic--ok">${IC.fiesta}</span>

@@ -51,10 +51,15 @@ export async function abrirRecurrentes({ onSaved } = {}) {
         ? recurrentes.map((r) => {
           const exc = r.excepciones && r.excepciones[mes];
           let meta = `Día ${r.diaDelMes} · ${categoriaPorId(r.categoria).label}`;
+          if (r.esVariable) meta += ' · valor variable';
           if (!r.activo) meta += ' · pausado';
           else if (exc && exc.saltar === true) meta += ' · saltado este mes';
           else if (exc && Number.isInteger(exc.monto)) meta += ` · este mes ${formatCOP(exc.monto)}`;
-          return filaCfg({ id: r.id, titulo: r.nombre, meta, valor: formatCOP(r.monto), accion: 'editar' });
+          // Un variable no tiene monto fijo: muestra su estimado (≈) o "Variable".
+          const valor = r.esVariable
+            ? (Number.isInteger(r.montoEstimado) ? '≈ ' + formatCOP(r.montoEstimado) : 'Variable')
+            : formatCOP(r.monto);
+          return filaCfg({ id: r.id, titulo: r.nombre, meta, valor, accion: 'editar' });
         }).join('')
         : vacioCfg('Aún no registras gastos fijos (arriendo, colegio, seguros…).');
 
@@ -88,6 +93,9 @@ export async function abrirRecurrentes({ onSaved } = {}) {
       const exc = (rec && rec.excepciones && rec.excepciones[mes]) || null;
       const saltado = !!(exc && exc.saltar === true);
       const montoMes = exc && Number.isInteger(exc.monto) ? exc.monto : null;
+      const esVar = !!(rec && rec.esVariable);
+      // El campo monto muestra el estimado si es variable, o el monto si es exacto.
+      const montoInicial = esVar ? (rec ? rec.montoEstimado : null) : (rec ? rec.monto : null);
 
       const cats = catalogoVisible().map((c) => `
         <option value="${esc(c.id)}"${rec && rec.categoria === c.id ? ' selected' : ''}>${esc(c.label)}</option>`).join('');
@@ -102,11 +110,23 @@ export async function abrirRecurrentes({ onSaved } = {}) {
             <input class="field__input" id="rec-nombre" type="text" autocomplete="off"
               placeholder="Arriendo" value="${esc(rec ? rec.nombre : '')}" />
           </label>
+          <div class="field">
+            <span class="field__label">¿Su valor es siempre igual o cambia?</span>
+            <div class="seg" role="tablist" id="rec-tipo-seg" aria-label="Tipo de valor del gasto fijo">
+              <button type="button" class="seg__opt${esVar ? '' : ' is-on'}" role="tab"
+                aria-selected="${!esVar}" data-var="0">Fijo exacto</button>
+              <button type="button" class="seg__opt${esVar ? ' is-on' : ''}" role="tab"
+                aria-selected="${esVar}" data-var="1">Valor variable</button>
+            </div>
+            <span class="sueldo-hint" id="rec-tipo-hint">${esVar
+    ? 'Su monto cambia cada mes (luz, agua, gasolina…). Bolsillo te preguntará el valor real cada mes.'
+    : 'Su monto es siempre el mismo (arriendo, colegio, seguros…).'}</span>
+          </div>
           <div class="field field--split">
             <label class="field__col">
-              <span class="field__label">Monto</span>
+              <span class="field__label" id="rec-monto-label">${esVar ? '¿Cuánto suele ser? (opcional)' : 'Monto'}</span>
               <input class="field__input" id="rec-monto" type="text" data-monto inputmode="numeric" autocomplete="off"
-                placeholder="1.800.000" value="${esc(rec ? formatCOP(rec.monto).replace('$', '') : '')}" />
+                placeholder="${esVar ? 'Opcional' : '1.800.000'}" value="${esc(montoInicial != null ? formatCOP(montoInicial).replace('$', '') : '')}" />
             </label>
             <label class="field__col">
               <span class="field__label">Día del mes</span>
@@ -122,7 +142,7 @@ export async function abrirRecurrentes({ onSaved } = {}) {
             <span class="field__label">Cuenta</span>
             <select class="field__input field__select" id="rec-cuenta">${cuentasOpt}</select>
           </label>
-          <label class="field">
+          <label class="field" id="rec-modo-wrap"${esVar ? ' hidden' : ''}>
             <span class="field__label">Cómo registrarlo</span>
             <select class="field__input field__select" id="rec-modo">
               <option value="confirmar"${!rec || rec.modo === 'confirmar' ? ' selected' : ''}>Preguntarme cada mes</option>
@@ -157,6 +177,31 @@ export async function abrirRecurrentes({ onSaved } = {}) {
       api.pintar(html, (panel) => {
         bindCabecera(panel, { atras: pantallaLista, cerrar: () => api.cerrar() });
 
+        // segmented Fijo exacto / Valor variable: cambia si el monto es obligatorio.
+        let esVariable = esVar;
+        const seg = panel.querySelector('#rec-tipo-seg');
+        seg.querySelectorAll('.seg__opt').forEach((opt) => {
+          opt.addEventListener('click', () => {
+            const quiereVar = opt.dataset.var === '1';
+            if (quiereVar === esVariable) return;
+            esVariable = quiereVar;
+            seg.querySelectorAll('.seg__opt').forEach((o) => {
+              const on = o === opt;
+              o.classList.toggle('is-on', on);
+              o.setAttribute('aria-selected', String(on));
+            });
+            panel.querySelector('#rec-monto-label').textContent = esVariable ? '¿Cuánto suele ser? (opcional)' : 'Monto';
+            const inp = panel.querySelector('#rec-monto');
+            inp.placeholder = esVariable ? 'Opcional' : '1.800.000';
+            panel.querySelector('#rec-tipo-hint').textContent = esVariable
+              ? 'Su monto cambia cada mes (luz, agua, gasolina…). Bolsillo te preguntará el valor real cada mes.'
+              : 'Su monto es siempre el mismo (arriendo, colegio, seguros…).';
+            // El modo "auto/preguntar" no aplica a los variables (siempre preguntan).
+            const modoWrap = panel.querySelector('#rec-modo-wrap');
+            if (modoWrap) modoWrap.hidden = esVariable;
+          });
+        });
+
         // switches (activo / saltar este mes)
         panel.querySelectorAll('.switch[data-act]').forEach((sw) => {
           const alternar = () => {
@@ -178,8 +223,9 @@ export async function abrirRecurrentes({ onSaved } = {}) {
           e.preventDefault();
           const nombre = panel.querySelector('#rec-nombre').value.trim();
           if (!nombre) { toast('Escribe un nombre'); panel.querySelector('#rec-nombre').focus(); return; }
-          const monto = leerMonto(panel, '#rec-monto', parseCOP);
-          if (monto == null) { toast('Escribe un monto válido'); panel.querySelector('#rec-monto').focus(); return; }
+          // Exacto: el monto es obligatorio. Variable: es solo referencia (opcional).
+          const montoCampo = leerMonto(panel, '#rec-monto', parseCOP);
+          if (!esVariable && montoCampo == null) { toast('Escribe un monto válido'); panel.querySelector('#rec-monto').focus(); return; }
           const dia = leerDia(panel, '#rec-dia');
           if (dia == null) { toast('El día debe estar entre 1 y 31'); panel.querySelector('#rec-dia').focus(); return; }
           const cuenta = panel.querySelector('#rec-cuenta').value;
@@ -188,11 +234,16 @@ export async function abrirRecurrentes({ onSaved } = {}) {
           const activo = panel.querySelector('.switch[data-act="activo"]').classList.contains('is-on');
           const campos = {
             nombre,
-            monto,
+            esVariable,
+            // exacto: el monto; variable: sin monto fijo (no reserva).
+            monto: esVariable ? null : montoCampo,
+            // variable: el campo es el estimado de referencia (opcional).
+            montoEstimado: esVariable ? montoCampo : null,
             diaDelMes: dia,
             categoria: panel.querySelector('#rec-categoria').value,
             cuenta,
-            modo: panel.querySelector('#rec-modo').value,
+            // El modo no aplica a variables (siempre preguntan): forzamos 'confirmar'.
+            modo: esVariable ? 'confirmar' : panel.querySelector('#rec-modo').value,
             activo,
           };
 
@@ -227,9 +278,12 @@ export async function abrirRecurrentes({ onSaved } = {}) {
 
         const borrar = panel.querySelector('[data-act="borrar"]');
         if (borrar) borrar.addEventListener('click', async () => {
+          const detalle = rec.esVariable
+            ? (Number.isInteger(rec.montoEstimado) ? '≈ ' + formatCOP(rec.montoEstimado) : 'valor variable')
+            : formatCOP(rec.monto);
           const ok = await confirmar({
             title: '¿Eliminar este gasto fijo?',
-            text: `${rec.nombre} · ${formatCOP(rec.monto)}. Los movimientos ya registrados no se borran.`,
+            text: `${rec.nombre} · ${detalle}. Los movimientos ya registrados no se borran.`,
             okText: 'Eliminar', danger: true,
           });
           if (!ok) return;

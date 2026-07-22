@@ -14,8 +14,12 @@ import registrar from './views/registrar.js';
 import { abrirOnboarding, debeMostrarse } from './views/onboarding.js';
 import { openDB, getConfig, saveConfig, getAll, bulkPut } from './db.js';
 import { materializarMes } from './recurring.js';
-import { migrarIngresos, ingresoNecesitaMigracion } from './model.js';
+import { migrarIngresos, ingresoNecesitaMigracion, crearMovimiento } from './model.js';
 import { aplicarPersonalizacion } from './categories.js';
+import { parseCOP, formatCOP } from './money.js';
+import { bindMontosVivos } from './money-input.js';
+import { hoja } from './overlay.js';
+import { esc } from './html.js';
 
 const CUENTAS_SEMILLA = ['Efectivo', 'Nequi', 'Bancolombia'];
 
@@ -249,10 +253,74 @@ function mostrarBannerConfirmar(pendientes) {
   requestAnimationFrame(() => b.classList.add('is-show'));
   const quitar = () => { b.classList.remove('is-show'); setTimeout(() => b.remove(), 300); };
   b.querySelector('[data-b="ok"]').addEventListener('click', async () => {
-    try { await bulkPut('movimientos', pendientes); refreshActive('movimientos'); } catch (err) { console.warn('[Bolsillo] confirmar recurrentes:', err); }
     quitar();
+    await confirmarPendientes(pendientes);
   });
   b.querySelector('[data-b="no"]').addEventListener('click', quitar);
+}
+
+/**
+ * Confirma la tanda pendiente del mes:
+ *  - EXACTOS (movimientos ya armados) → se guardan directo.
+ *  - VALOR VARIABLE (solicitudes con pediMonto:true) → se pregunta el valor real
+ *    de este mes (pre-llenado con el estimado) y recién ahí se crea el movimiento.
+ */
+async function confirmarPendientes(pendientes) {
+  const directos = pendientes.filter((p) => p.pediMonto !== true);
+  const variables = pendientes.filter((p) => p.pediMonto === true);
+  try {
+    if (directos.length) await bulkPut('movimientos', directos);
+    for (const sol of variables) {
+      const monto = await pedirMontoVariable(sol);
+      if (!Number.isInteger(monto) || monto <= 0) continue; // omitido este mes
+      const mov = crearMovimiento({
+        fecha: sol.fecha, monto, tipo: 'gasto',
+        categoria: sol.categoria || '', comercio: sol.comercio || '',
+        cuenta: sol.cuenta, fuente: 'recurrente', esFijo: true,
+        recurrenteId: sol.recurrenteId,
+      });
+      await bulkPut('movimientos', [mov]);
+    }
+    refreshActive('movimientos');
+    refreshActive('hoy');
+  } catch (err) {
+    console.warn('[Bolsillo] confirmar recurrentes:', err);
+  }
+}
+
+/**
+ * Mini-hoja "¿Cuánto fue [nombre] este mes?" para un fijo de valor variable.
+ * Resuelve el entero de pesos tecleado, o null si el usuario lo omite.
+ */
+function pedirMontoVariable(sol) {
+  const nombre = sol.comercio || 'este gasto fijo';
+  const sugerido = Number.isInteger(sol.montoEstimado) && sol.montoEstimado > 0
+    ? formatCOP(sol.montoEstimado).replace('$', '') : '';
+  const html = `
+    <div class="ov-grip" aria-hidden="true"></div>
+    <h3 class="ov-title">¿Cuánto fue ${esc(nombre)} este mes?</h3>
+    <p class="ov-text">Escribe el valor real de este mes. Puedes omitirlo si aún no lo sabes.</p>
+    <label class="field">
+      <span class="field__label">Monto de este mes</span>
+      <input class="field__input" id="rec-var-monto" type="text" data-monto inputmode="numeric"
+        autocomplete="off" placeholder="${sugerido ? '' : 'Ej. 120.000'}" value="${esc(sugerido)}" />
+    </label>
+    <div class="ov-actions">
+      <button type="button" class="btn btn--ghost btn--block" data-ov="skip">Omitir</button>
+      <button type="button" class="btn btn--primary btn--block" data-ov="save">Guardar</button>
+    </div>`;
+  return hoja(html, (panel, cerrar) => {
+    bindMontosVivos(panel);
+    const input = panel.querySelector('#rec-var-monto');
+    requestAnimationFrame(() => input && input.focus());
+    const guardar = () => {
+      const v = parseCOP(input.value);
+      cerrar(Number.isInteger(v) && v > 0 ? v : null);
+    };
+    panel.querySelector('[data-ov="save"]').addEventListener('click', guardar);
+    panel.querySelector('[data-ov="skip"]').addEventListener('click', () => cerrar(null));
+    input.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); guardar(); } });
+  });
 }
 
 /* ---- Service Worker (ruta relativa, funciona bajo subpath) ---- */
