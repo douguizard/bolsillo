@@ -16,14 +16,22 @@ import { toast } from '../toast.js';
 import { esc } from '../html.js';
 
 const CUENTAS_SUGERIDAS = ['Efectivo', 'Nequi', 'Bancolombia'];
-const TOTAL_PASOS = 5;
+const INTRO_TOTAL = 3;      // gancho → valor → cierre
+const TOTAL_PASOS = 4;      // sueldo → cuentas → fijos → listo
 
 const IC = {
   back: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18 9 12l6-6"/></svg>',
   plus: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>',
   x: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="m6 6 12 12M18 6 6 18"/></svg>',
-  escudo: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v5c0 4.4-3 8-7 10-4-2-7-5.6-7-10V6l7-3Z"/><path d="m9 12 2 2 4-4"/></svg>',
   fiesta: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20 9 8l7 7-12 5Z"/><path d="M14 4.5c1 .5 1.4 1.6 1 2.6M18 3c1.6.8 2.3 2.6 1.7 4.2M17 10.5c1 .5 2.2.1 2.7-.9"/></svg>',
+  // Intro premium
+  chevron: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg>',
+  flecha: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>',
+  check: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>',
+  carrito: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3h2l2.4 12.3a2 2 0 0 0 2 1.7h7.7a2 2 0 0 0 2-1.6L23 6H6"/><circle cx="9" cy="20" r="1.3"/><circle cx="18" cy="20" r="1.3"/></svg>',
+  casa: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 11.5 12 4l8 7.5"/><path d="M6 10v10h12V10"/></svg>',
+  combustible: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 21V6a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v15"/><path d="M4 21h12"/><path d="M8 9h6"/><path d="M15 8l3 3v6a1.6 1.6 0 0 0 3 0V9l-2.5-2.5"/></svg>',
+  camara: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8a2 2 0 0 1 2-2h1.5l1-2h5l1 2H18a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2Z"/><circle cx="12" cy="13" r="3.2"/></svg>',
 };
 
 /** ¿Debe mostrarse el onboarding? PURA. */
@@ -51,7 +59,9 @@ export async function abrirOnboarding({ onDone, forzado = false } = {}) {
 
   // Estado local del flujo (se persiste paso a paso, no al final).
   const st = {
-    paso: 0,
+    fase: 'intro',   // 'intro' (3 pantallas premium) | 'config' (sueldo/cuentas/fijos/listo)
+    introPaso: 0,    // 0=gancho 1=valor 2=cierre
+    paso: 0,         // índice en PASOS (config)
     empleo: ingresos.find((i) => i && i.fuente === 'empleo') || null,
     cuentas: Array.isArray(config.cuentas) && config.cuentas.length ? config.cuentas.slice() : CUENTAS_SUGERIDAS.slice(),
     fijos: recurrentes.slice(),
@@ -91,26 +101,120 @@ export async function abrirOnboarding({ onDone, forzado = false } = {}) {
 
   const ir = (n) => { st.paso = n; pintar(); };
 
-  /* ---- pasos ---- */
-  function pasoBienvenida() {
-    return {
-      html: `
-        <span class="ob__ic">${IC.escudo}</span>
-        <h1 class="ob__title">Tu bolsillo, en calma</h1>
-        <p class="ob__text">Bolsillo te dice, de un vistazo, si vas bien con tu plata este mes. Sin cuentas, sin banco conectado, sin publicidad.</p>
-        <ul class="ob__bullets">
-          <li>Tus datos viven <strong>solo en tu iPhone</strong>.</li>
-          <li>Funciona sin internet.</li>
-          <li>Tú decides cuándo hacer un respaldo.</li>
-        </ul>
-        <div class="ob__actions">
-          <button type="button" class="btn btn--primary btn--block" data-act="siguiente">Empecemos</button>
-          <button type="button" class="ob__skip" data-act="saltar">Configurar después</button>
-        </div>`,
-      bind() {},
-    };
+  /* ============================================================
+     INTRO PREMIUM — 3 pantallas tipo carrusel (gancho → valor → cierre).
+     Cards "de movimiento" ficticias (datos NEUTROS, nunca reales) que
+     entran en abanico desde un pivote inferior y quedan estáticas.
+     Al terminar ("Empezar") continúa a la configuración real (pasoSueldo).
+     ============================================================ */
+
+  // Tarjeta de movimiento (icono con tint de categoría + nombre/sub + monto).
+  // Sin estilos inline: la app aplica CSP `style-src 'self'` (bloquea style=""),
+  // así que posición y tints viven en clases .obi__* de views.css.
+  function movCard(fan, { tint, icon, nombre, sub, monto, entra = false }) {
+    return `<div class="obi__card obi__fan obi__${fan}">
+        <div class="obi__mov">
+          <span class="obi__mov-ic obi__mov-ic--${tint}">${icon}</span>
+          <span class="obi__mov-bd">
+            <span class="obi__mov-n">${nombre}</span>
+            <span class="obi__mov-s">${sub}</span>
+          </span>
+          <span class="obi__mov-amt${entra ? ' is-in' : ''}">${monto}</span>
+        </div>
+      </div>`;
   }
 
+  function anilloSemaforo(fan) {
+    return `<div class="obi__ring obi__fan obi__${fan}">
+        <svg viewBox="0 0 200 200" aria-hidden="true"><circle class="trk" cx="100" cy="100" r="85"/><circle class="prg" cx="100" cy="100" r="85"/></svg>
+        <span class="obi__ring-lbl">Vas bien</span>
+      </div>`;
+  }
+
+  // Paso 1 · gancho: anillo "Vas bien" + un gasto + un chip de categoría.
+  function vizGancho() {
+    return `<div class="obi__viz">
+        <span class="obi__halo obi__halo--verde"></span>
+        <div class="obi__cluster">
+          <div class="obi__slot obi__slot--g1">${anilloSemaforo('fanA')}</div>
+          <div class="obi__slot obi__slot--g2">${movCard('fanB', { tint: 'mercado', icon: IC.carrito, nombre: 'Mercado', sub: 'D1 · hoy', monto: '$82.000' })}</div>
+          <div class="obi__slot obi__slot--g3">
+            <div class="obi__chip obi__fan obi__fanC"><span class="obi__chip-d obi__chip-d--transporte"></span>Transporte</div>
+          </div>
+        </div>
+      </div>`;
+  }
+
+  // Paso 2 · valor: tres formas de registrar (teclado, voz, foto).
+  function vizValor() {
+    return `<div class="obi__viz">
+        <span class="obi__halo obi__halo--coral"></span>
+        <div class="obi__cluster">
+          <div class="obi__slot obi__slot--v1">${movCard('fanA', { tint: 'vivienda', icon: IC.casa, nombre: 'Arriendo', sub: 'Gasto fijo', monto: '$980.000' })}</div>
+          <div class="obi__slot obi__slot--v2">${movCard('fanB', { tint: 'transporte', icon: IC.combustible, nombre: 'Gasolina', sub: '🎤 por voz', monto: '$120.000' })}</div>
+          <div class="obi__slot obi__slot--v3">${movCard('fanC', { tint: 'recibo', icon: IC.camara, nombre: 'Recibo leído', sub: '📷 por foto', monto: '✓', entra: true })}</div>
+        </div>
+      </div>`;
+  }
+
+  // Paso 3 · cierre: anillo grande verde con el estado del mes.
+  function vizCierre() {
+    return `<div class="obi__viz">
+        <span class="obi__halo obi__halo--verde obi__halo--lg"></span>
+        <div class="obi__cluster">
+          <div class="obi__bigring">
+            <svg viewBox="0 0 200 200" aria-hidden="true"><circle class="trk" cx="100" cy="100" r="85"/><circle class="prg" cx="100" cy="100" r="85"/></svg>
+            <span class="obi__bigring-c">
+              <span class="obi__bigring-st">${IC.check} Vas bien</span>
+              <span class="obi__bigring-pct">14%</span>
+            </span>
+          </div>
+        </div>
+      </div>`;
+  }
+
+  const INTROS = [
+    { viz: vizGancho, title: 'Tu plata, <b>clara y en calma.</b>' },
+    { viz: vizValor,  title: '<b>Regístralo</b> hablando o con una <b>foto.</b>' },
+    { viz: vizCierre, title: 'Un <b>semáforo</b> te dice si vas bien.' },
+  ];
+
+  function entrarConfig() { st.fase = 'config'; st.paso = 0; pintar(); }
+
+  function pintarIntro() {
+    const idx = st.introPaso;
+    const { viz, title } = INTROS[idx];
+    const esUltima = idx === INTRO_TOTAL - 1;
+
+    const dots = Array.from({ length: INTRO_TOTAL }, (_, i) =>
+      `<span class="obi__dot${i === idx ? ' is-on' : ''}"></span>`).join('');
+
+    const controles = esUltima
+      ? `<button type="button" class="obi__cta" data-act="intro-empezar">${IC.flecha}<span>Empezar</span></button>`
+      : `<div class="obi__ctl">
+           <button type="button" class="obi__skip" data-act="saltar">Saltar</button>
+           <div class="obi__dots" role="progressbar" aria-valuenow="${idx + 1}" aria-valuemin="1"
+             aria-valuemax="${INTRO_TOTAL}" aria-label="Paso ${idx + 1} de ${INTRO_TOTAL}">${dots}</div>
+           <button type="button" class="obi__next" data-act="intro-next" aria-label="Siguiente">${IC.chevron}</button>
+         </div>`;
+
+    raiz.innerHTML = `
+      <div class="obi">
+        ${viz()}
+        <div class="obi__copy">
+          <h2 class="obi__h">${title}</h2>
+          ${controles}
+        </div>
+      </div>`;
+
+    raiz.querySelectorAll('[data-act="saltar"]').forEach((b) => b.addEventListener('click', terminar));
+    const next = raiz.querySelector('[data-act="intro-next"]');
+    if (next) next.addEventListener('click', () => { st.introPaso = Math.min(st.introPaso + 1, INTRO_TOTAL - 1); pintar(); });
+    const emp = raiz.querySelector('[data-act="intro-empezar"]');
+    if (emp) emp.addEventListener('click', entrarConfig);
+  }
+
+  /* ---- pasos de configuración ---- */
   function pasoSueldo() {
     const valor = st.empleo ? formatCOP(st.empleo.monto).replace('$', '') : '';
     const dia = st.empleo && st.empleo.diaDelMes ? st.empleo.diaDelMes : '';
@@ -331,11 +435,11 @@ export async function abrirOnboarding({ onDone, forzado = false } = {}) {
     };
   }
 
-  const PASOS = [pasoBienvenida, pasoSueldo, pasoCuentas, pasoFijos, pasoListo];
+  const PASOS = [pasoSueldo, pasoCuentas, pasoFijos, pasoListo];
 
   /* ---- avanzar (con persistencia del paso actual) ---- */
   async function avanzar() {
-    if (st.paso === 1) {
+    if (st.paso === 0) {
       const cont = raiz.querySelector('.ob__step');
       const monto = parseCOP(cont.querySelector('#ob-sueldo').value);
       if (!Number.isInteger(monto) || monto <= 0) {
@@ -357,7 +461,7 @@ export async function abrirOnboarding({ onDone, forzado = false } = {}) {
       }
     }
 
-    if (st.paso === 2) {
+    if (st.paso === 1) {
       if (!st.cuentas.length) { toast('Agrega al menos una cuenta'); return; }
       try {
         await saveConfig({ cuentas: st.cuentas });
@@ -372,13 +476,19 @@ export async function abrirOnboarding({ onDone, forzado = false } = {}) {
 
   /* ---- pintado ---- */
   function pintar() {
+    if (st.fase === 'intro') { pintarIntro(); return; }
+
     const { html, bind } = PASOS[st.paso]();
     const puntos = Array.from({ length: TOTAL_PASOS }, (_, i) =>
       `<span class="ob__dot${i === st.paso ? ' is-on' : ''}${i < st.paso ? ' is-done' : ''}"></span>`).join('');
 
+    // Back visible en todos los pasos menos el resumen final. En el primer paso
+    // (sueldo) retrocede a la intro; en los demás, al paso anterior.
+    const mostrarBack = st.paso < TOTAL_PASOS - 1;
+
     raiz.innerHTML = `
       <div class="ob__bar">
-        ${st.paso > 0 && st.paso < TOTAL_PASOS - 1
+        ${mostrarBack
     ? `<button type="button" class="icon-btn ob__back" data-act="atras" aria-label="Volver">${IC.back}</button>`
     : '<span class="ob__back-spacer"></span>'}
         <div class="ob__dots" role="progressbar" aria-valuenow="${st.paso + 1}" aria-valuemin="1"
@@ -395,7 +505,10 @@ export async function abrirOnboarding({ onDone, forzado = false } = {}) {
     }
 
     const atras = raiz.querySelector('[data-act="atras"]');
-    if (atras) atras.addEventListener('click', () => ir(Math.max(0, st.paso - 1)));
+    if (atras) atras.addEventListener('click', () => {
+      if (st.paso === 0) { st.fase = 'intro'; st.introPaso = INTRO_TOTAL - 1; pintar(); }
+      else ir(Math.max(0, st.paso - 1));
+    });
 
     const sig = raiz.querySelector('[data-act="siguiente"]');
     if (sig) sig.addEventListener('click', avanzar);

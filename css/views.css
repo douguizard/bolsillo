@@ -907,7 +907,7 @@
   z-index: var(--z-toast);
   display: flex;
   flex-direction: column;
-  background: var(--bg-0);
+  background: var(--bg-app);
   opacity: 0;
   transition: opacity var(--dur) var(--ease);
 }
@@ -1078,4 +1078,282 @@
 @media (prefers-reduced-motion: reduce) {
   .ob, .ob__step, .ob__dot { transition-duration: 1ms; }
   .ob__step { transform: none; }
+}
+
+/* ============================================================
+   Onboarding · INTRO premium (3 pantallas: gancho → valor → cierre)
+   Titulares editoriales grandes + "cards de movimiento" que entran
+   en abanico desde un pivote inferior y quedan estáticas. Todo con
+   tokens reales; sin paleta nueva. Solo transform/opacity. Respeta
+   prefers-reduced-motion. Clases prefijadas obi__ (sin colisiones).
+   ============================================================ */
+.obi {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: var(--page-max);
+  margin: 0 auto;
+  padding: calc(env(safe-area-inset-top) + var(--sp-7)) max(var(--sp-6), env(safe-area-inset-left))
+           calc(env(safe-area-inset-bottom) + var(--sp-7)) max(var(--sp-6), env(safe-area-inset-right));
+}
+
+/* --- lienzo de la animación (centra el cluster) --- */
+.obi__viz {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  display: grid;
+  place-items: center;
+}
+.obi__cluster {
+  position: relative;
+  z-index: 1;
+  width: 250px;
+  height: 300px;
+}
+.obi__halo {
+  position: absolute;
+  top: 50%; left: 50%;
+  width: 230px; height: 230px;
+  transform: translate(-50%, -52%);
+  border-radius: var(--r-full);
+  filter: blur(38px);
+  pointer-events: none;
+  z-index: 0;
+}
+.obi__halo--coral { background: var(--accent-glow); }
+.obi__halo--verde { background: color-mix(in srgb, var(--semaforo-verde) 22%, transparent); }
+.obi__halo--lg { width: 280px; height: 280px; }
+
+/* --- slot: centra en el eje horizontal; la posición vive en clases
+   (la app aplica CSP style-src 'self', que bloquea estilos inline) --- */
+.obi__slot {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+}
+/* gancho: anillo arriba → gasto → chip, en cascada */
+.obi__slot--g1 { top: 8px;   margin-left: -40px; }
+.obi__slot--g2 { top: 120px; margin-left: 8px; }
+.obi__slot--g3 { top: 214px; margin-left: -2px; }
+/* valor: tres gastos escalonados, el central al frente */
+.obi__slot--v1 { top: 20px;  margin-left: -10px; z-index: 2; }
+.obi__slot--v2 { top: 100px; margin-left: 14px;  z-index: 3; }
+.obi__slot--v3 { top: 180px; margin-left: -4px;  z-index: 2; }
+
+/* --- card de movimiento --- */
+.obi__card {
+  border-radius: var(--r-md);
+  background: var(--bg-2);
+  border: 1px solid var(--line-2);
+  box-shadow: var(--sh-md), var(--sh-sm);
+  padding: var(--sp-3);
+}
+.obi__mov { display: flex; align-items: center; gap: var(--sp-3); width: 210px; }
+.obi__mov-ic {
+  width: 34px; height: 34px; flex: none;
+  display: grid; place-items: center;
+  border-radius: var(--r-sm);
+}
+.obi__mov-ic svg { width: 17px; height: 17px; }
+.obi__mov-bd { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; }
+.obi__mov-n {
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-bold);
+  letter-spacing: -0.01em;
+  color: var(--text-1);
+  line-height: 1.2;
+}
+.obi__mov-s { font-size: var(--fs-xs); color: var(--text-3); margin-top: 1px; }
+.obi__mov-amt {
+  font-family: var(--font-num);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-bold);
+  letter-spacing: -0.01em;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-1);
+}
+.obi__mov-amt.is-in { color: var(--semaforo-verde); }
+
+/* tints de icono (identidad de categoría, no estado) */
+.obi__mov-ic--mercado    { background: color-mix(in srgb, var(--cat-mercado) 15%, transparent);    color: var(--cat-mercado); }
+.obi__mov-ic--vivienda   { background: color-mix(in srgb, var(--cat-vivienda) 15%, transparent);   color: var(--cat-vivienda); }
+.obi__mov-ic--transporte { background: color-mix(in srgb, var(--cat-transporte) 15%, transparent); color: var(--cat-transporte); }
+.obi__mov-ic--recibo     { background: var(--semaforo-verde-bg);                                    color: var(--semaforo-verde); }
+
+/* --- chip de categoría --- */
+.obi__chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 9px 13px;
+  border-radius: var(--r-sm);
+  background: var(--bg-2);
+  border: 1px solid var(--line-2);
+  box-shadow: var(--sh-sm);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-bold);
+  color: var(--text-1);
+}
+.obi__chip-d { width: 9px; height: 9px; flex: none; border-radius: var(--r-full); }
+.obi__chip-d--transporte { background: var(--cat-transporte); }
+
+/* --- anillo semáforo pequeño (card) --- */
+.obi__ring {
+  position: relative;
+  width: 120px; height: 120px;
+  display: grid; place-items: center;
+  border-radius: var(--r-lg);
+  background: var(--bg-2);
+  border: 1px solid var(--line-2);
+  box-shadow: var(--sh-md);
+}
+.obi__ring svg { width: 94px; height: 94px; transform: rotate(-90deg); }
+.obi__ring .trk { fill: none; stroke: var(--track); stroke-width: 11; }
+.obi__ring .prg {
+  fill: none; stroke: var(--semaforo-verde); stroke-width: 11;
+  stroke-linecap: round; stroke-dasharray: 534; stroke-dashoffset: 330;
+}
+.obi__ring-lbl {
+  position: absolute;
+  top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-bold);
+  color: var(--semaforo-verde);
+}
+
+/* --- anillo grande (cierre) --- */
+.obi__bigring {
+  position: absolute;
+  top: 50%; left: 50%;
+  width: 210px; height: 210px;
+  transform: translate(-50%, -50%);
+  transform-origin: center bottom;
+}
+.obi__bigring svg { width: 100%; height: 100%; transform: rotate(-90deg); }
+.obi__bigring .trk { fill: none; stroke: var(--track); stroke-width: 13; }
+.obi__bigring .prg {
+  fill: none; stroke: var(--semaforo-verde); stroke-width: 13;
+  stroke-linecap: round; stroke-dasharray: 534; stroke-dashoffset: 320;
+  filter: drop-shadow(0 3px 9px color-mix(in srgb, var(--semaforo-verde) 40%, transparent));
+}
+.obi__bigring-c {
+  position: absolute; inset: 0;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+}
+.obi__bigring-st {
+  display: inline-flex; align-items: center; gap: 5px;
+  white-space: nowrap;
+  padding: 5px 12px;
+  border-radius: var(--r-full);
+  background: var(--semaforo-verde-bg);
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-bold);
+  color: var(--semaforo-verde);
+}
+.obi__bigring-st svg { width: 12px; height: 12px; }
+.obi__bigring-pct {
+  margin-top: 6px;
+  font-family: var(--font-num);
+  font-size: 44px;
+  font-weight: var(--fw-bold);
+  letter-spacing: -0.03em;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-1);
+}
+
+/* --- copy + controles --- */
+.obi__copy { position: relative; z-index: 5; flex: 0 0 auto; }
+.obi__h {
+  margin: 0;
+  font-size: clamp(1.75rem, 1.1rem + 4.6vw, 2.5rem);
+  line-height: 1.08;
+  letter-spacing: -0.03em;
+  font-weight: var(--fw-regular);
+  color: var(--text-1);
+  text-wrap: balance;
+}
+.obi__h b { font-weight: var(--fw-bold); }
+
+.obi__ctl {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  margin-top: var(--sp-6);
+}
+.obi__skip {
+  display: flex; align-items: center;
+  min-height: 44px;
+  padding: 0 var(--sp-2);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-semibold);
+  color: var(--text-3);
+  transition: color var(--dur-fast) var(--ease);
+}
+.obi__skip:hover { color: var(--text-2); }
+.obi__dots { display: flex; align-items: center; gap: var(--sp-2); }
+.obi__dot {
+  width: 7px; height: 7px;
+  border-radius: var(--r-full);
+  background: var(--line-3);
+  transition: width var(--dur) var(--ease), background var(--dur) var(--ease);
+}
+.obi__dot.is-on { width: 22px; background: var(--accent); }
+.obi__next {
+  display: grid; place-items: center;
+  width: 52px; height: 52px; flex: none;
+  border-radius: var(--r-md);
+  background: var(--fab-grad);
+  border: 1px solid var(--accent-light);
+  color: var(--text-inverse);
+  box-shadow: var(--sh-fab);
+  transition: transform var(--dur-fast) var(--ease), filter var(--dur-fast) var(--ease);
+}
+.obi__next svg { width: 22px; height: 22px; }
+.obi__next:hover { filter: brightness(1.04); }
+.obi__next:active { transform: scale(0.96); }
+
+.obi__cta {
+  display: flex; align-items: center; justify-content: center;
+  gap: var(--sp-2);
+  width: 100%;
+  min-height: 54px;
+  margin-top: var(--sp-6);
+  border-radius: var(--r-md);
+  background: var(--fab-grad);
+  border: 1px solid var(--accent-light);
+  color: var(--text-inverse);
+  font-size: var(--fs-body);
+  font-weight: var(--fw-bold);
+  box-shadow: var(--sh-fab);
+  transition: transform var(--dur-fast) var(--ease), filter var(--dur-fast) var(--ease);
+}
+.obi__cta svg { width: 20px; height: 20px; }
+.obi__cta:hover { filter: brightness(1.04); }
+.obi__cta:active { transform: scale(0.98); }
+
+/* --- MOTION: abanico UNA vez desde pivote inferior → estático --- */
+.obi__fan { transform-origin: bottom center; }
+@keyframes obiFanA { from { opacity: 0; transform: translateY(58px) rotate(9deg) scale(.92); } to { opacity: 1; transform: translateY(0) rotate(-4deg) scale(1); } }
+@keyframes obiFanB { from { opacity: 0; transform: translateY(58px) rotate(-8deg) scale(.92); } to { opacity: 1; transform: translateY(0) rotate(2.5deg) scale(1); } }
+@keyframes obiFanC { from { opacity: 0; transform: translateY(58px) rotate(7deg) scale(.92); } to { opacity: 1; transform: translateY(0) rotate(-1.5deg) scale(1); } }
+@keyframes obiRingIn { from { opacity: 0; transform: translate(-50%, -50%) translateY(44px) scale(.9); } to { opacity: 1; transform: translate(-50%, -50%) translateY(0) scale(1); } }
+@keyframes obiRise { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: translateY(0); } }
+.obi__fanA { animation: obiFanA 0.7s var(--ease-fan) both 0.10s; }
+.obi__fanB { animation: obiFanB 0.7s var(--ease-fan) both 0.24s; }
+.obi__fanC { animation: obiFanC 0.7s var(--ease-fan) both 0.38s; }
+.obi__bigring { animation: obiRingIn 0.8s var(--ease-fan) both 0.12s; }
+.obi__h { animation: obiRise 0.55s var(--ease) both 0.05s; }
+.obi__ctl, .obi__cta { animation: obiRise 0.55s var(--ease) both 0.16s; }
+
+@media (prefers-reduced-motion: reduce) {
+  .obi__fan, .obi__bigring, .obi__h, .obi__ctl, .obi__cta { animation: none !important; }
+  .obi__fan { transform: none !important; }
+  .obi__bigring { transform: translate(-50%, -50%) !important; }
 }
