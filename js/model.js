@@ -8,7 +8,7 @@
 
 /* ---- enums / constantes ---- */
 export const TIPOS_MOVIMIENTO = Object.freeze(['gasto', 'ingreso', 'pago_credito', 'transferencia']);
-export const FUENTES_MOVIMIENTO = Object.freeze(['manual', 'foto', 'pdf', 'recurrente']);
+export const FUENTES_MOVIMIENTO = Object.freeze(['manual', 'foto', 'pdf', 'recurrente', 'voz']);
 /* Fuentes de ingreso: `empleo` es especial (sueldo, base del semáforo, única,
    no se borra) y `negocio` es genérica (cantidad y nombre libres: un
    negocio, otro, un arriendo…). Las viejas `negocio1`/`negocio2` se
@@ -393,7 +393,7 @@ export function configDefault() {
     // Orden personalizado del catálogo: [id, id, …].
     categoriasOrden: Object.freeze([]),
     apiKey: null,
-    modelos: Object.freeze({ vision: 'claude-haiku-4-5', extractos: 'claude-sonnet-4-5' }),
+    modelos: Object.freeze({ vision: 'claude-haiku-4-5', extractos: 'claude-sonnet-4-5', voz: 'claude-haiku-4-5-20251001' }),
     tema: 'dark',
     fechaUltimoBackup: null,
     onboardingCompletado: false,

@@ -17,6 +17,7 @@ import { formatCOP } from '../money.js';
 import { catalogoVisible, categoriaPorId } from '../categories.js';
 import { parseTextoLibre } from '../categorize.js';
 import { analizarRecibo, MODELO_FOTO_DEFAULT } from '../foto-gasto.js';
+import { interpretarVoz, MODELO_VOZ_DEFAULT, UMBRAL_CONFIANZA } from '../voz-gasto.js';
 import { toast } from '../toast.js';
 import { hoyISO, etiquetaFecha, esISOValida } from '../fechas.js';
 import { abrirFecha } from './fecha-sheet.js';
@@ -32,6 +33,7 @@ const IC = {
   keyboard: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="6" width="18" height="12" rx="2"/><path d="M7 10h.01M11 10h.01M15 10h.01M7 14h10"/></svg>',
   text: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 5h14M5 10h14M5 15h9"/></svg>',
   photo: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8a2 2 0 0 1 2-2h1.5l1-2h5l1 2H18a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2Z"/><circle cx="12" cy="13" r="3.2"/></svg>',
+  mic: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M6 11a6 6 0 0 0 12 0M12 17v4M9 21h6"/></svg>',
   pdf: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8Z"/><path d="M14 3v5h5"/></svg>',
   bang: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 8v5"/><circle cx="12" cy="16.5" r="1" fill="currentColor" stroke="none"/></svg>',
   chev: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>',
@@ -50,7 +52,8 @@ function fresh() {
     montoStr: '', categoriaId: '', ingresoId: '', cuenta: '', fecha: hoyISO(),
     comercio: '', esFijo: false, notas: '', fuente: 'manual',
     detalles: false, keypad: true, agregandoCuenta: false,
-    metodoElegido: false, // ¿ya pasó la selección Teclado/Texto/Foto? (solo gasto)
+    metodoElegido: false, // ¿ya pasó la selección Teclado/Texto/Foto/Voz? (solo gasto)
+    vozTexto: '', vozConfianzaBaja: false, // captura por voz (se resalta si la IA dudó)
   };
 }
 let STATE = fresh();
@@ -147,6 +150,14 @@ function renderMetodos() {
         <span class="capture-opt__name">Texto libre</span>
         <span class="capture-opt__desc">"Pagué 50k de mercado"</span>
       </button>
+      <button class="capture-opt capture-opt--wide" type="button" data-metodo="voz">
+        <span class="capture-opt__icon">${IC.mic}</span>
+        <span class="capture-opt__body">
+          <span class="capture-opt__name">🎤 Decir el gasto</span>
+          <span class="capture-opt__desc">Dícalo tal como lo dirías y la IA lo interpreta</span>
+        </span>
+        <span class="capture-opt__go" aria-hidden="true">${IC.chev}</span>
+      </button>
       <button class="capture-opt capture-opt--wide" type="button" data-metodo="foto">
         <span class="capture-opt__icon">${IC.photo}</span>
         <span class="capture-opt__body">
@@ -168,6 +179,48 @@ function renderCargando() {
       <span class="foto-loading__spin" aria-hidden="true"></span>
       <p class="foto-loading__txt">Leyendo tu recibo con IA…</p>
       <p class="foto-loading__sub">Extraigo el monto, el comercio y la categoría.</p>
+    </div>`;
+}
+
+/* ¿El navegador soporta dictado en vivo? (mejora progresiva; en iOS suele
+   NO existir, por eso el campo de texto + 🎤 del teclado es el camino base). */
+function vozEnVivoSoportado() {
+  return typeof window !== 'undefined'
+    && !!(window.SpeechRecognition || window.webkitSpeechRecognition);
+}
+
+/* Hoja de dictado: campo de texto auto-enfocado (abre el teclado y su 🎤) +
+   botón opcional de dictado en vivo cuando el navegador lo permite. */
+function renderVoz() {
+  const enVivo = vozEnVivoSoportado() ? `
+    <button type="button" class="voz-live" data-act="voz-live" aria-pressed="false">
+      <span class="voz-live__ic">${IC.mic}</span>
+      <span class="voz-live__txt">Dictar en vivo</span>
+    </button>` : '';
+  const tieneTexto = !!(STATE.vozTexto && STATE.vozTexto.trim());
+  return `
+    ${cabecera('Decir el gasto', true)}
+    <p class="sheet__sub">Dícalo tal como lo dirías; la IA saca el monto, la categoría y el detalle.</p>
+    <label class="voz-field">
+      <textarea class="field__input voz-field__input" id="reg-voz" rows="3"
+        placeholder="cincuenta mil en el mercado, varios"
+        autocomplete="off" autocapitalize="sentences" inputmode="text">${esc(STATE.vozTexto)}</textarea>
+    </label>
+    <p class="voz-hint">Toca el 🎤 del teclado de tu celular y habla. En iPhone es lo más confiable.</p>
+    ${enVivo}
+    <button type="button" class="btn btn--primary btn--block voz-go" data-act="voz-interpretar" ${tieneTexto ? '' : 'disabled'}>
+      Interpretar con IA
+    </button>`;
+}
+
+/* Pantalla mientras la IA interpreta la frase dictada. Reusa .foto-loading. */
+function renderVozCargando() {
+  return `
+    ${cabecera('Interpretando', false)}
+    <div class="foto-loading" role="status" aria-live="polite">
+      <span class="foto-loading__spin" aria-hidden="true"></span>
+      <p class="foto-loading__txt">Interpretando lo que dijiste…</p>
+      <p class="foto-loading__sub">Saco el monto, la categoría y el detalle.</p>
     </div>`;
 }
 
@@ -287,9 +340,18 @@ function renderForm() {
 
   const guardarTxt = STATE.editId ? 'Guardar cambios' : (ingreso ? 'Guardar ingreso' : 'Guardar gasto');
 
+  // Aviso cuando la IA de voz no quedó segura: se resalta para que el usuario
+  // revise antes de guardar (nunca se guarda a ciegas).
+  const vozWarn = STATE.vozConfianzaBaja ? `
+    <div class="voz-warn" role="status">
+      <span class="voz-warn__ic">${IC.bang}</span>
+      <span class="voz-warn__txt">Revisa los datos: no quedé del todo seguro de lo que dictaste.</span>
+    </div>` : '';
+
   return `
     ${cabecera(titulo, true)}
     ${seg}
+    ${vozWarn}
     ${textInput}
     <button type="button" class="amt amt--${ingreso ? 'in' : 'out'}${STATE.keypad ? ' is-active' : ''}" data-act="amt-toggle" aria-label="Monto">
       <span class="amt__cur">${ingreso ? '+$' : '$'}</span>
@@ -312,11 +374,18 @@ function paint() {
   sheetRef.scrollTop = 0;
   sheetRef.innerHTML = STATE.screen === 'form' ? renderForm()
     : STATE.screen === 'foto-cargando' ? renderCargando()
-      : renderMetodos();
+      : STATE.screen === 'voz' ? renderVoz()
+        : STATE.screen === 'voz-cargando' ? renderVozCargando()
+          : renderMetodos();
   bind();
   if (STATE.screen === 'form' && STATE.modo === 'texto') {
     const ti = sheetRef.querySelector('#reg-texto');
     if (ti) setTimeout(() => ti.focus(), 60);
+  }
+  if (STATE.screen === 'voz') {
+    const va = sheetRef.querySelector('#reg-voz');
+    // Auto-enfoca para abrir el teclado (y su 🎤) apenas se entra a la hoja.
+    if (va) setTimeout(() => { va.focus(); const n = va.value.length; try { va.setSelectionRange(n, n); } catch { /* noop */ } }, 60);
   }
 }
 
@@ -367,7 +436,9 @@ function bind() {
   sheetRef.querySelectorAll('[data-act]').forEach((el) => {
     const act = el.dataset.act;
     if (act === 'close') el.addEventListener('click', cerrar);
-    else if (act === 'back') el.addEventListener('click', () => { STATE.screen = 'metodos'; STATE.tipo = 'gasto'; STATE.metodoElegido = false; draftPend = null; paint(); });
+    else if (act === 'back') el.addEventListener('click', () => { detenerDictado(); STATE.screen = 'metodos'; STATE.tipo = 'gasto'; STATE.metodoElegido = false; STATE.vozConfianzaBaja = false; draftPend = null; paint(); });
+    else if (act === 'voz-interpretar') el.addEventListener('click', interpretarVozDictada);
+    else if (act === 'voz-live') el.addEventListener('click', toggleDictado);
     else if (act === 'draft-resume') el.addEventListener('click', retomarDraft);
     else if (act === 'draft-discard') el.addEventListener('click', () => { clearDraft(); draftPend = null; paint(); });
     else if (act === 'amt-toggle') el.addEventListener('click', () => { STATE.keypad = !STATE.keypad; paint(); });
@@ -393,6 +464,7 @@ function bind() {
     b.addEventListener('click', () => {
       const metodo = b.dataset.metodo;
       if (metodo === 'foto') { abrirCamara(); return; }
+      if (metodo === 'voz') { abrirVoz(); return; }
       STATE.modo = metodo;
       STATE.tipo = 'gasto';
       STATE.fuente = 'manual';
@@ -446,6 +518,10 @@ function bind() {
   // inputs de texto (sin repintar)
   const texto = sheetRef.querySelector('#reg-texto');
   if (texto) texto.addEventListener('input', () => interpretarTexto(texto.value));
+
+  // campo de dictado por voz: guarda el texto y habilita/deshabilita Interpretar
+  const voz = sheetRef.querySelector('#reg-voz');
+  if (voz) voz.addEventListener('input', () => { STATE.vozTexto = voz.value; syncVozBtn(); });
 
   const detalle = sheetRef.querySelector('#reg-detalle');
   if (detalle) detalle.addEventListener('input', () => { STATE.comercio = detalle.value; scheduleSave(); });
@@ -572,6 +648,145 @@ async function onFotoElegida(e) {
   toast(r.monto ? 'Recibo leído · revisa y guarda' : 'No leí el monto: escríbelo', { icono: !!r.monto, ms: 3400 });
 }
 
+/* ============================================================
+   Voz del gasto → IA (tool-use) → prellenar el formulario
+   Reusa la MISMA tarjeta de revisión del flujo de foto: solo cambia la
+   entrada (texto dictado en vez de imagen). Guarda con fuente:'voz'.
+   ============================================================ */
+let recog = null;         // instancia de SpeechRecognition (dictado en vivo)
+let recogActivo = false;  // ¿está escuchando ahora mismo?
+
+/** Abre la hoja de dictado (campo de texto). La clave se valida al interpretar. */
+function abrirVoz() {
+  STATE.modo = 'voz';
+  STATE.tipo = 'gasto';
+  STATE.fuente = 'voz';
+  STATE.metodoElegido = true;
+  STATE.screen = 'voz';
+  STATE.keypad = false;
+  STATE.vozConfianzaBaja = false;
+  if (!STATE.cuenta) STATE.cuenta = cuentas()[0] || '';
+  paint();
+}
+
+/** Habilita/deshabilita "Interpretar" según haya texto (sin repintar). */
+function syncVozBtn() {
+  const btn = sheetRef.querySelector('[data-act="voz-interpretar"]');
+  if (btn) btn.disabled = !(STATE.vozTexto && STATE.vozTexto.trim());
+}
+
+/** Refleja el estado del botón de dictado en vivo (sin repintar). */
+function syncDictadoBtn() {
+  const btn = sheetRef.querySelector('[data-act="voz-live"]');
+  if (!btn) return;
+  btn.classList.toggle('is-live', recogActivo);
+  btn.setAttribute('aria-pressed', String(recogActivo));
+  const txt = btn.querySelector('.voz-live__txt');
+  if (txt) txt.textContent = recogActivo ? 'Escuchando… toca para parar' : 'Dictar en vivo';
+}
+
+/** Detiene el dictado en vivo si estaba activo. Idempotente. */
+function detenerDictado() {
+  if (recog) { try { recog.stop(); } catch { /* noop */ } }
+  recogActivo = false;
+}
+
+/** Enciende/apaga el dictado en vivo (mejora progresiva; feature-detect). */
+function toggleDictado() {
+  const Rec = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!Rec) return;
+  if (recogActivo) { detenerDictado(); syncDictadoBtn(); return; }
+
+  const ta = sheetRef.querySelector('#reg-voz');
+  const base = ta ? ta.value.trim() : '';
+  try { recog = new Rec(); } catch { toast('No se pudo iniciar el dictado', { icono: false }); return; }
+  recog.lang = 'es-CO';
+  recog.interimResults = true;
+  recog.continuous = false;
+  recog.onresult = (e) => {
+    let dicho = '';
+    for (let i = e.resultIndex; i < e.results.length; i++) dicho += e.results[i][0].transcript;
+    const campo = sheetRef.querySelector('#reg-voz');
+    if (campo) {
+      campo.value = (base ? base + ' ' : '') + dicho;
+      STATE.vozTexto = campo.value;
+      syncVozBtn();
+    }
+  };
+  recog.onerror = () => { recogActivo = false; syncDictadoBtn(); };
+  recog.onend = () => { recogActivo = false; syncDictadoBtn(); };
+  try { recog.start(); recogActivo = true; syncDictadoBtn(); }
+  catch { recogActivo = false; syncDictadoBtn(); }
+}
+
+/** Vuelca el resultado de la IA en el formulario (misma tarjeta de revisión). */
+function aplicarResultadoVoz(r) {
+  // Ingreso solo si la IA lo detectó Y hay negocios a los cuales abonar; si no,
+  // cae con gracia a gasto (registrar un ingreso exige una fuente de negocio).
+  if (r.tipo === 'ingreso' && fuentes.length) {
+    STATE.tipo = 'ingreso';
+    if (fuentes.length === 1) STATE.ingresoId = fuentes[0].id;
+    STATE.detalles = true;
+  } else {
+    STATE.tipo = 'gasto';
+    if (r.categoriaId) STATE.categoriaId = r.categoriaId;
+    STATE.comercio = r.comercio || '';
+  }
+  if (r.monto) STATE.montoStr = String(r.monto);
+  if (r.cuenta) STATE.cuenta = r.cuenta;
+  if (r.nota) STATE.notas = r.nota;
+  STATE.fuente = 'voz';
+  STATE.vozConfianzaBaja = r.confianza < UMBRAL_CONFIANZA;
+}
+
+/** Manda el texto dictado a Claude y prellena la tarjeta de revisión. */
+async function interpretarVozDictada() {
+  detenerDictado();
+  const ta = sheetRef.querySelector('#reg-voz');
+  const texto = (ta ? ta.value : STATE.vozTexto || '').trim();
+  if (!texto) { toast('Escribe o dicta el gasto primero', { icono: false }); return; }
+
+  if (!cfg || typeof cfg.apiKey !== 'string' || cfg.apiKey.trim() === '') {
+    toast('Para interpretar por voz, configura tu clave en Ajustes → Conexión con IA', { icono: false, ms: 4000 });
+    return;
+  }
+
+  STATE.vozTexto = texto;
+  STATE.tipo = 'gasto';
+  STATE.fuente = 'voz';
+  STATE.screen = 'voz-cargando';
+  if (!STATE.cuenta) STATE.cuenta = cuentas()[0] || '';
+  paint();
+
+  const categorias = catalogoVisible().map((c) => ({ id: c.id, label: c.label }));
+  const modelo = (cfg && cfg.modelos && cfg.modelos.voz) || MODELO_VOZ_DEFAULT;
+  const r = await interpretarVoz({
+    texto, apiKey: cfg.apiKey, modelo, categorias, cuentas: cuentas(),
+  });
+
+  if (STATE.screen !== 'voz-cargando') return; // el usuario cerró/navegó
+
+  if (r.estado !== 'ok') {
+    toast(r.mensaje || 'No se pudo interpretar', { icono: false, ms: 4000 });
+    STATE.screen = 'voz'; // vuelve a la hoja de dictado con el texto intacto
+    paint();
+    return;
+  }
+
+  aplicarResultadoVoz(r);
+  STATE.metodoElegido = true;
+  STATE.screen = 'form';
+  STATE.keypad = !r.monto; // sin monto → abre el teclado para escribirlo
+  scheduleSave();
+  paint();
+
+  const baja = r.confianza < UMBRAL_CONFIANZA;
+  toast(
+    baja ? 'Revisa: no quedé del todo seguro' : (r.monto ? 'Listo · revisa y guarda' : 'No leí el monto: escríbelo'),
+    { icono: !baja && !!r.monto, ms: 3600 },
+  );
+}
+
 /* Abre la hoja inferior de fecha (Hoy/Ayer/Antier + nativo). Guarda la
    fecha REAL elegida; si se cierra sin elegir, no toca nada. */
 async function elegirFecha() {
@@ -641,7 +856,8 @@ async function guardar() {
       toast('Cambios guardados');
     } else if (ingreso) {
       const mov = crearMovimiento({
-        monto, tipo: 'ingreso', cuenta, fecha: STATE.fecha, fuente: 'manual',
+        monto, tipo: 'ingreso', cuenta, fecha: STATE.fecha,
+        fuente: STATE.fuente === 'voz' ? 'voz' : 'manual',
         ingresoId: STATE.ingresoId, comercio: nombreFuente(fuenteActual()),
         notas: STATE.notas.trim(),
       }, { config: cfg || undefined });
@@ -692,6 +908,7 @@ async function abrir(mov = null) {
 }
 
 function cerrar() {
+  detenerDictado();
   if (!STATE.editId && hasContent()) saveDraft();
   if (closeRef) closeRef();
 }

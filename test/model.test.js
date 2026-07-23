@@ -85,6 +85,11 @@ test('validarMovimiento: acepta un movimiento válido', () => {
   assert.equal(r.value.monto, 15000);
 });
 
+test('crearMovimiento: acepta fuente "voz" (gasto por voz)', () => {
+  const m = crearMovimiento({ ...movBase, fuente: 'voz' });
+  assert.equal(m.fuente, 'voz');
+});
+
 /* ---------------- derivarEsHormiga ---------------- */
 
 test('derivarEsHormiga: un gasto fijo NUNCA es hormiga', () => {
